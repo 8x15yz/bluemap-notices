@@ -1,0 +1,36 @@
+{
+  "name": "bluemap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:init": "node scripts/init-db.mjs"
+  },
+  "dependencies": {
+    "kordoc": "^3.0.1",
+    "lucide-react": "^1.17.0",
+    "markdown-it": "^14.2.0",
+    "next": "^16.2.9",
+    "pdfjs-dist": "^4.10.38",
+    "pg": "^8.21.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "latest",
+    "@types/pg": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "^6.0.3",
+    "vitest": "latest"
+  },
+  "overrides": {
+    "postcss": "^8.5.15"
+  }
+}
