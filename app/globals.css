@@ -168,6 +168,36 @@ textarea {
   width: 100%;
 }
 
+.sync-progress {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.sync-progress-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sync-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e6b0aa;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .sync-button {
   width: 100%;
 }

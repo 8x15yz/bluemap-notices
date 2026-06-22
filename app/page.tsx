@@ -13,7 +13,6 @@ import {
   TimerReset
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { syncNowAction } from "@/app/actions";
 import { SyncSubmitButton } from "@/app/sync-submit-button";
 import { getNoticeStatus, type NoticeStatus } from "@/lib/notice-status";
 import { listNotices, type NoticeListParams } from "@/lib/repositories/notices";
@@ -62,9 +61,9 @@ export default async function HomePage({ searchParams }: PageProps) {
 
       <section className="workspace">
         <aside className="panel side-panel">
-          <form action={syncNowAction} className="sync-action">
+          <div className="sync-action">
             <SyncSubmitButton />
-          </form>
+          </div>
           <a className="button secondary settings-entry" href="/settings/keywords">
             <Settings2 size={16} />
             키워드 설정

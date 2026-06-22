@@ -71,6 +71,7 @@ export interface FetchNoticeParams {
   endDate: Date;
   maxPages: number;
   numOfRows: number;
+  onPageFetched?: (pageNo: number, maxPages: number, totalFetched: number) => void;
 }
 
 export interface NoticeSource<TRawNotice = unknown> {

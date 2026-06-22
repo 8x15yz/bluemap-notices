@@ -13,14 +13,25 @@ import { getSlackDigestItems, sendSlackDigest } from "@/lib/services/slack";
 import type { SyncSummary } from "@/lib/types";
 import { daysAgo, isFutureOrToday } from "@/lib/utils/dates";
 
-export async function syncG2bNotices(): Promise<SyncSummary> {
-  const lookbackDays = getOptionalNumberEnv("SYNC_LOOKBACK_DAYS", 10);
-  const maxPages = getOptionalNumberEnv("SYNC_MAX_PAGES", 10);
+export type SyncProgressEvent =
+  | { phase: "fetching"; page: number; maxPages: number; fetched: number }
+  | { phase: "processing"; fetched: number; processed: number; candidates: number };
+
+export async function syncG2bNotices(params?: {
+  lookbackDays?: number;
+  maxPages?: number;
+  onProgress?: (event: SyncProgressEvent) => void;
+}): Promise<SyncSummary> {
+  const lookbackDays = params?.lookbackDays ?? getOptionalNumberEnv("SYNC_LOOKBACK_DAYS", 5);
+  const maxPages = params?.maxPages ?? getOptionalNumberEnv("SYNC_MAX_PAGES", 10);
   const rawNotices = await g2bSource.fetchNotices({
     startDate: daysAgo(lookbackDays),
     endDate: new Date(),
     maxPages,
-    numOfRows: 100
+    numOfRows: 100,
+    onPageFetched: (page, mp, fetched) => {
+      params?.onProgress?.({ phase: "fetching", page, maxPages: mp, fetched });
+    }
   });
   const filterConfig = await getActiveFilterRuleConfig();
 
@@ -43,6 +54,7 @@ export async function syncG2bNotices(): Promise<SyncSummary> {
     const enrichedNotice = rescoreNotice(await enrichG2bNoticeWithDetail(notice), filterConfig.includeKeywords);
     await upsertNotice(enrichedNotice);
     stored += 1;
+    params?.onProgress?.({ phase: "processing", fetched: rawNotices.length, processed: stored, candidates });
   }
 
   const notificationSummary = await notifyPendingSlackNotices();

@@ -140,6 +140,7 @@ export const g2bSource: NoticeSource<G2bBidNotice> = {
       });
 
       items.push(...pageItems);
+      params.onPageFetched?.(pageNo, params.maxPages, items.length);
 
       if (pageItems.length < params.numOfRows) {
         break;
