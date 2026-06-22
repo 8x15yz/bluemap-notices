@@ -13,7 +13,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <main className="shell">
           <header className="topbar">
             <a className="brand" href="/" aria-label="BLUEMAP 홈">
-              <h1>BLUEMAP 되나</h1>
+              <h1>BLUEMAP</h1>
             </a>
           </header>
           {children}

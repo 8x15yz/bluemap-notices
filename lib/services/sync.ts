@@ -14,8 +14,8 @@ import type { SyncSummary } from "@/lib/types";
 import { daysAgo, isFutureOrToday } from "@/lib/utils/dates";
 
 export async function syncG2bNotices(): Promise<SyncSummary> {
-  const lookbackDays = getOptionalNumberEnv("SYNC_LOOKBACK_DAYS", 2);
-  const maxPages = getOptionalNumberEnv("SYNC_MAX_PAGES", 3);
+  const lookbackDays = getOptionalNumberEnv("SYNC_LOOKBACK_DAYS", 10);
+  const maxPages = getOptionalNumberEnv("SYNC_MAX_PAGES", 10);
   const rawNotices = await g2bSource.fetchNotices({
     startDate: daysAgo(lookbackDays),
     endDate: new Date(),
