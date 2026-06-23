@@ -75,7 +75,7 @@ export default async function HomePage({ searchParams }: PageProps) {
         <section className="panel content-panel">
           <div className="content-header">
             <div>
-              <h2>후보 공고</h2>
+              <h2>후보 공고 되나?</h2>
             </div>
             {hasFilters ? (
               <a className="button secondary compact-button" href="/">
