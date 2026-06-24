@@ -2,15 +2,15 @@
 
 ## 배포 운영 결정
 
-- MVP 배포 대상은 **Vercel + 외부 Postgres(Supabase 등) + Vercel Cron**으로 둔다.
+- 배포 대상은 **AWS EC2 + Docker Compose**다 (`docker-compose.yml`: `postgres` + `app` 컨테이너). 원래는 Vercel + Vercel Cron으로 배포했으나, 인수인계 과정에서 EC2/Docker 운영으로 전환됐다.
+- 배포 파이프라인은 GitHub Actions(`.github/workflows/deploy.yml`)다. `main` push 시 GHCR에 이미지를 push하고 SSH로 EC2에 접속해 `docker compose pull && up -d`를 실행한다.
 - 자동 수집 기준 시간은 **평일 오전 9시 30분 KST**로 둔다.
-- `vercel.json`의 cron 표현식은 UTC 기준이므로 `30 0 * * 1-5`를 사용한다.
-- Vercel Hobby 플랜은 cron이 하루 1회까지만 가능하고, 지정된 시간대 안에서 실행 시점이 다소 흔들릴 수 있다. 분 단위 정확도가 꼭 필요하면 Pro 이상으로 올린다.
-- 실패 알림은 MVP에서는 **Vercel Runtime Logs / Cron Jobs View Logs**로 확인한다. Slack 실패 알림은 운영 중 필요성이 확인되면 후속 작업으로 붙인다.
+- 스케줄링은 더 이상 Vercel Cron이 아니라 **EC2 서버의 crontab**이 담당한다 (`vercel.json`은 삭제됨). crontab은 EC2 호스트에 직접 등록해야 하므로 코드 배포만으로는 자동으로 생기지 않는다 — 새 EC2 인스턴스로 이전할 때마다 crontab을 다시 등록해야 한다.
+- 실패 확인은 `docker compose logs -f app`과 crontab이 기록하는 로그 파일(예: `/home/ubuntu/sync.log`)로 한다. Slack 실패 알림은 운영 중 필요성이 확인되면 후속 작업으로 붙인다.
 
-## Vercel 환경변수 체크리스트
+## EC2 `.env` 체크리스트
 
-Production 환경에 아래 값을 입력한다.
+`/home/ubuntu/bluemap-notices/.env`(`docker-compose.yml`이 `env_file`로 읽는 파일)에 아래 값을 입력한다.
 
 - `DATABASE_URL`
 - `PGSSLMODE=require` (Supabase처럼 SSL이 필요한 DB일 때)
@@ -57,38 +57,25 @@ curl.exe http://localhost:3000/api/sync
 curl.exe -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/sync
 ```
 
-## Vercel Cron 설정
+## EC2 crontab 스케줄링
 
-Vercel 프로젝트 환경변수에 `CRON_SECRET`을 설정하면, Vercel이 cron 호출에 `Authorization: Bearer <CRON_SECRET>` 헤더를 자동으로 붙인다.
-
-```json
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    {
-      "path": "/api/sync",
-      "schedule": "30 0 * * 1-5"
-    }
-  ]
-}
-```
-
-위 설정은 이미 루트 `vercel.json`에 반영되어 있다. UTC 기준 평일 00:30, 한국시간으로는 평일 오전 9:30에 실행된다. Vercel Cron은 실패 호출을 자동 재시도하지 않으므로, 실패 여부는 Vercel 함수 로그에서 확인한다.
-
-참고:
-
-- [Vercel Cron Jobs 관리 문서](https://vercel.com/docs/cron-jobs/manage-cron-jobs)
-- [Vercel Cron Jobs 사용량/요금 문서](https://vercel.com/docs/cron-jobs/usage-and-pricing)
-
-## 외부 스케줄러 예시
-
-Vercel이 아닌 배포 환경이나 외부 스케줄러를 쓰는 경우에도 같은 HTTP 호출만 유지하면 된다.
+Vercel Cron이 아니라 **EC2 서버 자체의 crontab**이 매일 `/api/sync`를 호출한다. `docker-compose.yml`에서 `app` 컨테이너가 호스트의 3000번 포트에 매핑돼 있으므로 호스트 crontab에서 `localhost:3000`으로 바로 호출할 수 있다.
 
 ```bash
-curl -fsS \
-  -H "Authorization: Bearer ${CRON_SECRET}" \
-  https://bluemap.example.com/api/sync
+crontab -e
 ```
+
+```cron
+# 한국시간 평일 오전 9:30. 서버 타임존이 UTC면 30 0 * * 1-5로 적는다 (timedatectl로 확인)
+30 9 * * 1-5 curl -s -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/sync >> /home/ubuntu/sync.log 2>&1
+```
+
+주의할 점:
+
+- crontab은 EC2 인스턴스 자체에 등록되는 OS 설정이라 코드 저장소에 들어있지 않다. 인스턴스를 교체하거나 새로 띄울 때마다 다시 등록해야 한다.
+- crontab 환경에서는 일반 로그인 셸의 환경변수(`$CRON_SECRET`)를 못 읽는 경우가 많으므로, 위처럼 변수 치환에 의존하지 말고 실제 값을 직접 박아 넣거나 crontab 맨 위에 `CRON_SECRET=값`을 선언해 둔다.
+- 실패는 자동 재시도되지 않으므로, `sync.log`를 주기적으로 확인하거나 별도 모니터링이 필요하면 후속 작업으로 검토한다.
+- 같은 호출 규칙(`Authorization: Bearer <CRON_SECRET>` + `GET /api/sync`)을 쓰므로, EC2 crontab 대신 외부 스케줄러(예: GitHub Actions의 `schedule` 트리거로 공개 URL을 호출)로 바꾸더라도 코드 변경은 필요 없다.
 
 ## 중복 Slack 알림 기준
 
