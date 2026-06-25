@@ -248,10 +248,10 @@ const COMBO_FAMILIES: ComboFamily[] = [
     ]
   },
   {
-    label: "GIS + DB + 공간정보/해양공간정보/S-100/해도/전자해도/구축",
+    label: "GIS + 해양 + DB/공간정보/해양공간정보/S-100/해도/전자해도/구축",
     dimension: "technical",
-    coreGroups: [["GIS"], ["DB"]],
-    contextSignals: ["공간정보", "해양공간정보", "S-100", "해도", "전자해도", "구축"],
+    coreGroups: [["GIS"] , ["해양"] , ["바다"] , ["S-100"]],
+    contextSignals: ["DB","공간정보", "해양공간정보", "S-100", "해도", "전자해도", "구축"],
     tiers: [
       { minContextMatches: 0, bonus: 25 },
       { minContextMatches: 1, bonus: 50 },
@@ -261,7 +261,7 @@ const COMBO_FAMILIES: ComboFamily[] = [
   {
     label: "AI + 해양데이터/항행/수로/분석/보안플랫폼/공간정보/해양공간정보/S-100/해도/전자해도/구축",
     dimension: "technical",
-    coreGroups: [["AI", "인공지능"]],
+    coreGroups: [["AI", "인공지능"] , ["해양"] , ["바다"] , ["S-100"]],
     contextSignals: ["해양데이터", "항행", "수로", "분석", "보안플랫폼","공간정보", "해양공간정보", "S-100", "해도", "전자해도", "구축"],
     tiers: [
       { minContextMatches: 1, bonus: 20 },
