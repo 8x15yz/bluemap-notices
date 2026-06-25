@@ -39,27 +39,32 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## `/api/sync` 호출 규칙
 
-- 자동 수집 엔드포인트는 `GET /api/sync`와 `POST /api/sync`를 모두 지원한다.
-- `CRON_SECRET`이 비어 있으면 인증 없이 호출할 수 있다. 로컬 개발 확인용으로만 사용한다.
-- `CRON_SECRET`이 설정되어 있으면 `Authorization: Bearer <CRON_SECRET>` 헤더가 없는 호출은 `401`로 차단된다.
-- 성공 응답은 `fetched`, `stored`, `candidates`, `notified`, `skippedNotifications` 값을 반환한다.
-- 실패 시 API는 `500`과 오류 메시지를 반환하고, 서버 로그에는 `[api/sync] Sync failed`가 남는다.
+- 엔드포인트는 `GET /api/sync`와 `POST /api/sync`를 모두 지원한다.
+- 동기화 자체(나라장터 수집 + DB 저장)는 인증 없이 항상 실행된다. 브라우저에서 버튼을 누르거나 URL을 직접 열어도 동작한다.
+- **Slack 알림은 기본적으로 발송되지 않는다.** `?source=cron` 쿼리 파라미터가 있고 `Authorization: Bearer <CRON_SECRET>` 헤더가 `CRON_SECRET` 값과 일치할 때만 Slack 묶음 알림을 보낸다.
+  - `?source=cron`이 없으면 → 수동 모드. 동기화는 실행하지만 Slack은 절대 보내지 않고, `slack_notifications`에도 기록을 남기지 않는다.
+  - `?source=cron`이 있는데 `CRON_SECRET`이 비어 있거나 헤더가 일치하지 않으면 → `401 Unauthorized`를 반환하고 동기화 자체를 실행하지 않는다.
+  - `?source=cron` + 올바른 시크릿 → 동기화 실행 + Slack 알림 발송.
+- 성공 응답은 `fetched`, `stored`, `candidates`, `notified`, `skippedNotifications` 값을 반환한다. 수동 모드에서는 `notified`가 항상 `0`이다.
+- 실패 시 API는 `500`과 오류 메시지를 반환하고, 서버 로그에는 `[api/sync] Sync failed`가 남는다. `CRON_SECRET`이나 Slack Webhook URL은 어떤 로그에도 출력하지 않는다.
 
 ## 로컬 확인
+
+수동 모드(Slack 없음, 인증 불필요):
 
 ```powershell
 curl.exe http://localhost:3000/api/sync
 ```
 
-`CRON_SECRET`을 설정한 상태에서는 아래처럼 호출한다.
+크론 모드(Slack 발송, `CRON_SECRET` 필요):
 
 ```powershell
-curl.exe -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3000/api/sync
+curl.exe -X POST -H "Authorization: Bearer <CRON_SECRET>" "http://localhost:3000/api/sync?source=cron"
 ```
 
 ## EC2 crontab 스케줄링
 
-Vercel Cron이 아니라 **EC2 서버 자체의 crontab**이 매일 `/api/sync`를 호출한다. `docker-compose.yml`에서 `app` 컨테이너가 호스트의 3000번 포트에 매핑돼 있으므로 호스트 crontab에서 `localhost:3000`으로 바로 호출할 수 있다.
+Vercel Cron이 아니라 **EC2 서버 자체의 crontab**이 매일 `/api/sync?source=cron`을 호출한다. `docker-compose.yml`에서 `app` 컨테이너가 호스트의 3000번 포트에 매핑돼 있으므로 호스트 crontab에서 `localhost:3000`으로 바로 호출할 수 있다.
 
 ```bash
 crontab -e
@@ -67,21 +72,24 @@ crontab -e
 
 ```cron
 # 한국시간 평일 오전 9:30. 서버 타임존이 UTC면 30 0 * * 1-5로 적는다 (timedatectl로 확인)
-30 9 * * 1-5 curl -s -H "Authorization: Bearer ${CRON_SECRET}" http://localhost:3000/api/sync >> /home/ubuntu/sync.log 2>&1
+30 9 * * 1-5 curl -s -X POST -H "Authorization: Bearer ${CRON_SECRET}" "http://localhost:3000/api/sync?source=cron" >> /home/ubuntu/sync.log 2>&1
 ```
 
 주의할 점:
 
+- `?source=cron` 파라미터가 없으면 수동 모드로 처리되어 Slack이 발송되지 않으므로, crontab 호출에는 반드시 `?source=cron`을 붙인다.
 - crontab은 EC2 인스턴스 자체에 등록되는 OS 설정이라 코드 저장소에 들어있지 않다. 인스턴스를 교체하거나 새로 띄울 때마다 다시 등록해야 한다.
 - crontab 환경에서는 일반 로그인 셸의 환경변수(`$CRON_SECRET`)를 못 읽는 경우가 많으므로, 위처럼 변수 치환에 의존하지 말고 실제 값을 직접 박아 넣거나 crontab 맨 위에 `CRON_SECRET=값`을 선언해 둔다.
 - 실패는 자동 재시도되지 않으므로, `sync.log`를 주기적으로 확인하거나 별도 모니터링이 필요하면 후속 작업으로 검토한다.
-- 같은 호출 규칙(`Authorization: Bearer <CRON_SECRET>` + `GET /api/sync`)을 쓰므로, EC2 crontab 대신 외부 스케줄러(예: GitHub Actions의 `schedule` 트리거로 공개 URL을 호출)로 바꾸더라도 코드 변경은 필요 없다.
+- 같은 호출 규칙(`Authorization: Bearer <CRON_SECRET>` + `?source=cron`)을 쓰므로, EC2 crontab 대신 외부 스케줄러(예: GitHub Actions의 `schedule` 트리거로 공개 URL을 호출)로 바꾸더라도 코드 변경은 필요 없다.
 
-## 중복 Slack 알림 기준
+## 수동 조회 vs 크론 — Slack 알림 분리
 
-수동 조회 버튼과 `/api/sync`는 모두 같은 `syncG2bNotices()` 서비스를 호출한다. Slack 발송 대상은 `slack_notifications`에 `sent` 기록이 없는 후보 공고만 조회하므로, 수동 조회 직후 자동 조회가 실행되어도 이미 발송된 공고는 다시 보내지 않는다.
+브라우저의 "공고 조회" 버튼은 `/api/sync`를 `source` 파라미터 없이 호출한다(수동 모드). 동기화와 DB 저장은 일어나지만 Slack 묶음 알림은 절대 보내지 않으며 `slack_notifications`에도 기록되지 않는다. `CRON_SECRET`은 프런트엔드 코드에 노출되지 않는다.
 
-동시에 두 요청이 오래 겹치는 운영 상황이 생기면 DB 기반 실행 잠금 또는 배포 플랫폼의 동시 실행 제한을 추가로 검토한다.
+EC2 crontab만 `?source=cron` + `CRON_SECRET`으로 호출해 Slack 알림을 발송한다. Slack 발송 대상은 `slack_notifications`에 `sent` 기록이 없는 후보 공고만 조회하므로, 크론이 겹쳐 실행되어도 이미 발송된 공고는 다시 보내지 않는다.
+
+동시에 두 크론 요청이 오래 겹치는 운영 상황이 생기면 DB 기반 실행 잠금 또는 배포 플랫폼의 동시 실행 제한을 추가로 검토한다.
 
 ## Slack 쓰레드 답변
 

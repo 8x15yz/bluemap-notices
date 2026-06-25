@@ -17,8 +17,8 @@ describe("/api/sync route", () => {
     vi.unstubAllEnvs();
   });
 
-  it("runs without authorization when CRON_SECRET is not set", async () => {
-    vi.stubEnv("CRON_SECRET", "");
+  it("defaults to manual mode (no Slack) when called without ?source=cron", async () => {
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
     const summary = createSummary();
     syncG2bNoticesMock.mockResolvedValueOnce(summary);
 
@@ -26,26 +26,56 @@ describe("/api/sync route", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(summary);
-    expect(syncG2bNoticesMock).toHaveBeenCalledTimes(1);
+    expect(syncG2bNoticesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ notifySlack: false })
+    );
   });
 
-  it("blocks unauthenticated cron calls when CRON_SECRET is set", async () => {
-    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+  it("runs manual mode without requiring authorization even when CRON_SECRET is unset", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+    const summary = createSummary();
+    syncG2bNoticesMock.mockResolvedValueOnce(summary);
 
     const response = await GET(createRequest());
+
+    expect(response.status).toBe(200);
+    expect(syncG2bNoticesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ notifySlack: false })
+    );
+  });
+
+  it("blocks ?source=cron requests without a matching bearer token", async () => {
+    vi.stubEnv("CRON_SECRET", "test-cron-secret");
+
+    const response = await GET(createRequest({ url: "http://localhost:3000/api/sync?source=cron" }));
 
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "Unauthorized" });
     expect(syncG2bNoticesMock).not.toHaveBeenCalled();
   });
 
-  it("accepts a matching bearer token when CRON_SECRET is set", async () => {
+  it("blocks ?source=cron requests when CRON_SECRET is not configured", async () => {
+    vi.stubEnv("CRON_SECRET", "");
+
+    const response = await GET(
+      createRequest({
+        url: "http://localhost:3000/api/sync?source=cron",
+        headers: { authorization: "Bearer anything" }
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(syncG2bNoticesMock).not.toHaveBeenCalled();
+  });
+
+  it("enables Slack notifications for ?source=cron with a matching bearer token", async () => {
     vi.stubEnv("CRON_SECRET", "test-cron-secret");
     const summary = createSummary({ fetched: 12, candidates: 3, stored: 3, notified: 3 });
     syncG2bNoticesMock.mockResolvedValueOnce(summary);
 
     const response = await POST(
       createRequest({
+        url: "http://localhost:3000/api/sync?source=cron",
         method: "POST",
         headers: {
           authorization: "Bearer test-cron-secret"
@@ -55,7 +85,9 @@ describe("/api/sync route", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(summary);
-    expect(syncG2bNoticesMock).toHaveBeenCalledTimes(1);
+    expect(syncG2bNoticesMock).toHaveBeenCalledWith(
+      expect.objectContaining({ notifySlack: true })
+    );
   });
 
   it("returns a readable error and logs failures", async () => {
@@ -65,6 +97,7 @@ describe("/api/sync route", () => {
 
     const response = await GET(
       createRequest({
+        url: "http://localhost:3000/api/sync?source=cron",
         headers: {
           authorization: "Bearer test-cron-secret"
         }
@@ -77,8 +110,11 @@ describe("/api/sync route", () => {
   });
 });
 
-function createRequest(init: ConstructorParameters<typeof NextRequest>[1] = {}): NextRequest {
-  return new NextRequest("http://localhost:3000/api/sync", init);
+function createRequest(
+  init: { url?: string } & ConstructorParameters<typeof NextRequest>[1] = {}
+): NextRequest {
+  const { url, ...rest } = init;
+  return new NextRequest(url ?? "http://localhost:3000/api/sync", rest);
 }
 
 function createSummary(overrides: Partial<SyncSummary> = {}): SyncSummary {

@@ -23,6 +23,7 @@ const DEFAULT_LOOKBACK_DAYS = 1;
 
 export async function syncG2bNotices(params?: {
   lookbackDays?: number;
+  notifySlack?: boolean;
   onProgress?: (event: SyncProgressEvent) => void;
 }): Promise<SyncSummary> {
   const lookbackDays = params?.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
@@ -58,7 +59,10 @@ export async function syncG2bNotices(params?: {
     params?.onProgress?.({ phase: "processing", fetched: rawNotices.length, processed: stored, candidates });
   }
 
-  const notificationSummary = await notifyPendingSlackNotices();
+  const notificationSummary =
+    params?.notifySlack === true
+      ? await notifyPendingSlackNotices()
+      : { notified: 0, skipped: 0 };
 
   return {
     fetched: rawNotices.length,

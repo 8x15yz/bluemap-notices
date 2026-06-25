@@ -26,21 +26,27 @@ function parsePositiveInt(value: string | null): number | undefined {
 
 async function handleSync(request: NextRequest): Promise<Response> {
   const isStreaming = request.headers.get("accept")?.includes("text/event-stream");
-  const secret = process.env.CRON_SECRET;
+  const url = new URL(request.url);
 
-  if (secret && !isStreaming) {
+  // Slack notifications only ever fire for an explicitly authorized scheduled (cron) request.
+  // Any other request — including the browser sync button, or hitting this URL directly —
+  // defaults to manual mode and must never trigger Slack.
+  const isCronRequest = url.searchParams.get("source") === "cron";
+
+  if (isCronRequest) {
+    const secret = process.env.CRON_SECRET;
     const authorization = request.headers.get("authorization");
-    if (authorization !== `Bearer ${secret}`) {
+    if (!secret || authorization !== `Bearer ${secret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   }
 
-  const url = new URL(request.url);
+  const notifySlack = isCronRequest;
   const lookbackDays = parsePositiveInt(url.searchParams.get("lookbackDays"));
 
   if (!isStreaming) {
     try {
-      const summary = await syncG2bNotices({ lookbackDays });
+      const summary = await syncG2bNotices({ lookbackDays, notifySlack });
       return NextResponse.json(summary);
     } catch (error) {
       console.error("[api/sync] Sync failed", error);
@@ -62,6 +68,7 @@ async function handleSync(request: NextRequest): Promise<Response> {
       try {
         const summary = await syncG2bNotices({
           lookbackDays,
+          notifySlack,
           onProgress: send,
         });
         send({ phase: "done", ...summary });
