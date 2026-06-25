@@ -37,11 +37,10 @@ async function handleSync(request: NextRequest): Promise<Response> {
 
   const url = new URL(request.url);
   const lookbackDays = parsePositiveInt(url.searchParams.get("lookbackDays"));
-  const maxPages = parsePositiveInt(url.searchParams.get("maxPages"));
 
   if (!isStreaming) {
     try {
-      const summary = await syncG2bNotices({ lookbackDays, maxPages });
+      const summary = await syncG2bNotices({ lookbackDays });
       return NextResponse.json(summary);
     } catch (error) {
       console.error("[api/sync] Sync failed", error);
@@ -63,7 +62,6 @@ async function handleSync(request: NextRequest): Promise<Response> {
       try {
         const summary = await syncG2bNotices({
           lookbackDays,
-          maxPages,
           onProgress: send,
         });
         send({ phase: "done", ...summary });

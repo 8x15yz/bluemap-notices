@@ -69,9 +69,8 @@ export interface ProposalDraft {
 export interface FetchNoticeParams {
   startDate: Date;
   endDate: Date;
-  maxPages: number;
   numOfRows: number;
-  onPageFetched?: (pageNo: number, maxPages: number, totalFetched: number) => void;
+  onPageFetched?: (pageNo: number, knownTotalPages: number, totalFetched: number) => void;
 }
 
 export interface NoticeSource<TRawNotice = unknown> {

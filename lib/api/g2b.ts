@@ -8,6 +8,10 @@ const DEFAULT_G2B_STANDARD_BASE_URL = "http://apis.data.go.kr/1230000/ao/PubData
 const DEFAULT_G2B_BID_PUBLIC_BASE_URL = "http://apis.data.go.kr/1230000/ad/BidPublicInfoService";
 const DETAIL_FETCH_TIMEOUT_MS = 15000;
 
+// 정상적인 일일 발행량(수천 건)을 한참 넘는 totalCount가 돌아오면 API 응답 이상으로 간주한다.
+// 평소 수집 상한이 아니라, 그런 비정상 상황에서만 걸리는 안전 가드다.
+const HARD_SAFETY_MAX_PAGES_PER_DAY = 500;
+
 const detailOperationByBusinessDivision: Record<string, G2bBidDetailOperation> = {
   공사: "getBidPblancListInfoCnstwk",
   용역: "getBidPblancListInfoServc",
@@ -130,21 +134,55 @@ export const g2bSource: NoticeSource<G2bBidNotice> = {
   sourceId: "g2b",
   displayName: "나라장터",
 
+  // 날짜 범위를 통째로 조회하면 나라장터 일일 발행량(수천 건)이 고정 페이지 상한을 넘는 순간
+  // 그 이후 공고는 통째로 누락된다. 날짜 단위로 쪼개서 각 날짜의 1페이지 응답에서 totalCount를
+  // 먼저 확인하고, requiredPages(=ceil(totalCount/numOfRows))를 전부 수집한다.
   async fetchNotices(params: FetchNoticeParams): Promise<G2bBidNotice[]> {
     const items: G2bBidNotice[] = [];
+    const days = enumerateDays(params.startDate, params.endDate);
+    let pagesCompletedAcrossDoneDays = 0;
 
-    for (let pageNo = 1; pageNo <= params.maxPages; pageNo += 1) {
-      const pageItems = await fetchG2bPage({
-        ...params,
-        pageNo
+    for (const day of days) {
+      const firstPage = await fetchG2bPage({
+        startDate: day,
+        endDate: day,
+        numOfRows: params.numOfRows,
+        pageNo: 1
       });
 
-      items.push(...pageItems);
-      params.onPageFetched?.(pageNo, params.maxPages, items.length);
+      items.push(...firstPage.items);
 
-      if (pageItems.length < params.numOfRows) {
-        break;
+      const requiredPages = firstPage.totalCount > 0
+        ? Math.ceil(firstPage.totalCount / params.numOfRows)
+        : 1;
+
+      if (requiredPages > HARD_SAFETY_MAX_PAGES_PER_DAY) {
+        throw new Error(
+          `[g2b] ${formatG2bDateTime(day)} totalCount=${firstPage.totalCount}건이 비정상적으로 큽니다 ` +
+            `(requiredPages=${requiredPages} > 안전 상한 ${HARD_SAFETY_MAX_PAGES_PER_DAY}). ` +
+            `API 응답 이상으로 판단해 동기화를 중단합니다.`
+        );
       }
+
+      params.onPageFetched?.(pagesCompletedAcrossDoneDays + 1, pagesCompletedAcrossDoneDays + requiredPages, items.length);
+
+      for (let pageNo = 2; pageNo <= requiredPages; pageNo += 1) {
+        const page = await fetchG2bPage({
+          startDate: day,
+          endDate: day,
+          numOfRows: params.numOfRows,
+          pageNo
+        });
+
+        items.push(...page.items);
+        params.onPageFetched?.(pagesCompletedAcrossDoneDays + pageNo, pagesCompletedAcrossDoneDays + requiredPages, items.length);
+
+        if (page.items.length < params.numOfRows) {
+          break;
+        }
+      }
+
+      pagesCompletedAcrossDoneDays += requiredPages;
     }
 
     return items;
@@ -201,7 +239,19 @@ export const g2bSource: NoticeSource<G2bBidNotice> = {
   }
 };
 
-async function fetchG2bPage(params: FetchNoticeParams & { pageNo: number }): Promise<G2bBidNotice[]> {
+interface G2bPageParams {
+  startDate: Date;
+  endDate: Date;
+  numOfRows: number;
+  pageNo: number;
+}
+
+interface G2bPageResult {
+  items: G2bBidNotice[];
+  totalCount: number;
+}
+
+async function fetchG2bPage(params: G2bPageParams): Promise<G2bPageResult> {
   const serviceKey = getRequiredEnv("G2B_SERVICE_KEY");
   const baseUrl = process.env.G2B_STANDARD_API_BASE_URL || DEFAULT_G2B_STANDARD_BASE_URL;
   const searchParams = new URLSearchParams({
@@ -232,13 +282,33 @@ async function fetchG2bPage(params: FetchNoticeParams & { pageNo: number }): Pro
     throw new Error(`나라장터 API 오류: ${resultCode} ${resultMsg ?? ""}`.trim());
   }
 
+  const totalCount = Number(payload.response?.body?.totalCount ?? 0) || 0;
   const items = payload.response?.body?.items;
 
   if (!items) {
-    return [];
+    return { items: [], totalCount };
   }
 
-  return normalizeG2bItems(items);
+  return { items: normalizeG2bItems(items), totalCount };
+}
+
+function enumerateDays(startDate: Date, endDate: Date): Date[] {
+  const days: Date[] = [];
+  const cursor = startOfDay(startDate);
+  const end = startOfDay(endDate);
+
+  while (cursor.getTime() <= end.getTime()) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return days;
+}
+
+function startOfDay(date: Date): Date {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  return result;
 }
 
 export async function fetchG2bBidDetail(params: G2bDetailFetchParams): Promise<G2bBidDetailSummary | null> {

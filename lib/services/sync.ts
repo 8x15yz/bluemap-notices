@@ -1,5 +1,4 @@
 import { enrichG2bNoticeWithDetail, g2bSource } from "@/lib/api/g2b";
-import { getOptionalNumberEnv } from "@/lib/config/env";
 import {
   listPendingSlackNotices,
   recordSlackNotification,
@@ -17,20 +16,22 @@ export type SyncProgressEvent =
   | { phase: "fetching"; page: number; maxPages: number; fetched: number }
   | { phase: "processing"; fetched: number; processed: number; candidates: number };
 
+// 매일 도는 크론을 전제로 오늘 + 어제(크론 1회 실패 대비 버퍼)만 본다. 날짜별로 totalCount를
+// 전부 수집하므로 더 늘려도 누락은 없지만, 그만큼 호출량이 늘어나니 환경변수로 임의로
+// 늘어나지 않도록 고정값으로 둔다. 필요하면 params.lookbackDays로만 명시적으로 override한다.
+const DEFAULT_LOOKBACK_DAYS = 1;
+
 export async function syncG2bNotices(params?: {
   lookbackDays?: number;
-  maxPages?: number;
   onProgress?: (event: SyncProgressEvent) => void;
 }): Promise<SyncSummary> {
-  const lookbackDays = params?.lookbackDays ?? getOptionalNumberEnv("SYNC_LOOKBACK_DAYS", 5);
-  const maxPages = params?.maxPages ?? getOptionalNumberEnv("SYNC_MAX_PAGES", 10);
+  const lookbackDays = params?.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
   const rawNotices = await g2bSource.fetchNotices({
     startDate: daysAgo(lookbackDays),
     endDate: new Date(),
-    maxPages,
     numOfRows: 100,
-    onPageFetched: (page, mp, fetched) => {
-      params?.onProgress?.({ phase: "fetching", page, maxPages: mp, fetched });
+    onPageFetched: (page, knownTotalPages, fetched) => {
+      params?.onProgress?.({ phase: "fetching", page, maxPages: knownTotalPages, fetched });
     }
   });
   const filterConfig = await getActiveFilterRuleConfig();
