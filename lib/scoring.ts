@@ -237,10 +237,10 @@ const NOISE_SIGNALS: ScoringSignal[] = [
 // 단계(tier)가 결정된다. 한 단계만 적용되므로(가장 높은 단계만 선택) 중복 가산되지 않는다.
 const COMBO_FAMILIES: ComboFamily[] = [
   {
-    label: "S-100 + IHO/ENC/전자해도/수로제품/제품사양/데이터셋/검증",
+    label: "S-100 + IHO/ENC/전자해도/해도/수로제품/제품사양/데이터셋/검증",
     dimension: "standards",
     coreGroups: [["S-100", "S100", "S-101", "S-102", "S-104", "S-111", "S-122", "S-124", "S-128"]],
-    contextSignals: ["IHO", "ENC", "전자해도", "수로제품", "제품사양", "데이터셋", "검증"],
+    contextSignals: ["IHO", "ENC", "전자해도", "해도", "수로제품", "제품사양", "데이터셋", "검증"],
     tiers: [
       { minContextMatches: 1, bonus: 30 },
       { minContextMatches: 2, bonus: 50 },
@@ -248,10 +248,10 @@ const COMBO_FAMILIES: ComboFamily[] = [
     ]
   },
   {
-    label: "GIS + DB + 공간정보/해양공간정보/관로/상수도/하수도/구축",
+    label: "GIS + DB + 공간정보/해양공간정보/S-100/해도/전자해도/구축",
     dimension: "technical",
     coreGroups: [["GIS"], ["DB"]],
-    contextSignals: ["공간정보", "해양공간정보", "관로", "상수도", "하수도", "구축"],
+    contextSignals: ["공간정보", "해양공간정보", "S-100", "해도", "전자해도", "구축"],
     tiers: [
       { minContextMatches: 0, bonus: 25 },
       { minContextMatches: 1, bonus: 50 },
@@ -259,19 +259,19 @@ const COMBO_FAMILIES: ComboFamily[] = [
     ]
   },
   {
-    label: "AI + 해양데이터/항행/수로/분석/보안플랫폼",
+    label: "AI + 해양데이터/항행/수로/분석/보안플랫폼/공간정보/해양공간정보/S-100/해도/전자해도/구축",
     dimension: "technical",
     coreGroups: [["AI", "인공지능"]],
-    contextSignals: ["해양데이터", "항행", "수로", "분석", "보안플랫폼"],
+    contextSignals: ["해양데이터", "항행", "수로", "분석", "보안플랫폼","공간정보", "해양공간정보", "S-100", "해도", "전자해도", "구축"],
     tiers: [
       { minContextMatches: 1, bonus: 20 },
       { minContextMatches: 2, bonus: 35 }
     ]
   },
   {
-    label: "VTS + 디지털/국제표준/서비스/개발",
+    label: "VTS + 해양 + 디지털/국제표준/서비스/개발",
     dimension: "technical",
-    coreGroups: [["VTS"], ["디지털"]],
+    coreGroups: [["VTS"], ["해양"], ["디지털"]],
     contextSignals: ["국제표준", "서비스", "개발"],
     tiers: [
       { minContextMatches: 0, bonus: 30 },
