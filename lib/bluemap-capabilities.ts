@@ -1,3 +1,4 @@
+import { matchesKeyword } from "@/lib/scoring";
 import type { NoticeRecord } from "@/lib/types";
 
 export interface BluemapCapability {
@@ -176,7 +177,7 @@ export function matchBluemapCapabilities(text: string, limit = BLUEMAP_CAPABILIT
   const normalizedText = normalizeSearchText(text);
 
   return BLUEMAP_CAPABILITIES.map((capability, index) => {
-    const matchedKeywords = capability.keywords.filter((keyword) => normalizedText.includes(normalizeSearchText(keyword)));
+    const matchedKeywords = capability.keywords.filter((keyword) => matchesKeyword(normalizedText, keyword));
     const relevanceScore = matchedKeywords.reduce((score, keyword) => score + getKeywordWeight(keyword), 0);
 
     return {

@@ -66,4 +66,23 @@ describe("scoring", () => {
     expect(result.breakdown.generalTechScore).toBe(10);
     expect(result.matchedKeywords).toEqual(["해저 케이블", "관제", "플랫폼"]);
   });
+
+  it("matches GIS only as a standalone token, not as a substring", () => {
+    expect(matchKeywords("GIS DB 구축용역")).toContain("GIS");
+    expect(matchKeywords("공간정보 GIS 구축")).toContain("GIS");
+    expect(matchKeywords("하수관로 GIS DB 정확도 개선")).toContain("GIS");
+
+    expect(matchKeywords("GIST 연구용역")).not.toContain("GIS");
+    expect(matchKeywords("GIST대학 산학협력 용역")).not.toContain("GIS");
+    expect(matchKeywords("Gwangju Institute of Science and Technology")).not.toContain("GIS");
+  });
+
+  it("does not treat electrical switchgear GIS as a geospatial signal", () => {
+    const result = scoreNoticeText("변전소 GIS설비 정비공사");
+
+    expect(matchKeywords("변전소 GIS설비 정비공사")).not.toContain("GIS");
+    expect(result.matchedKeywords).not.toContain("GIS");
+    expect(result.breakdown.generalTechScore).toBe(0);
+    expect(result.score).toBe(0);
+  });
 });

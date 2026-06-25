@@ -142,13 +142,38 @@ const RISK_SIGNALS: ScoringSignal[] = [
   { keyword: "공사", points: 3 }
 ];
 
-export function matchKeywords(text: string, keywords: string[] = BLUEMAP_KEYWORDS): string[] {
-  const normalizedText = normalizeSearchText(text);
+// "GIS"는 지리정보시스템 약어지만 "GIST"(광주과학기술원)처럼 영문 약어 내부에
+// 부분 문자열로도 등장하고, 전력설비 분야의 "가스절연개폐장치(Gas Insulated Switchgear)"도
+// 동일하게 "GIS"로 줄여 쓴다. 단순 includes는 이 두 가지를 모두 공간정보 신호로 오인식하므로
+// 토큰 경계 검사와 전력설비 맥락 키워드 배제를 함께 적용한다.
+const GIS_ELECTRICAL_NOISE_KEYWORDS = ["gis설비", "가스절연", "개폐장치", "변전소", "154kv"];
 
-  return keywords.filter((keyword) => {
-    const normalizedKeyword = normalizeSearchText(keyword);
-    return normalizedText.includes(normalizedKeyword);
-  });
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchesStandaloneToken(normalizedText: string, normalizedToken: string): boolean {
+  const pattern = new RegExp(`(?<![a-z0-9])${escapeRegExp(normalizedToken)}(?![a-z0-9])`, "i");
+  return pattern.test(normalizedText);
+}
+
+function isGisElectricalNoise(normalizedText: string): boolean {
+  return GIS_ELECTRICAL_NOISE_KEYWORDS.some((noise) => normalizedText.includes(noise));
+}
+
+export function matchesKeyword(text: string, keyword: string): boolean {
+  const normalizedText = normalizeSearchText(text);
+  const normalizedKeyword = normalizeSearchText(keyword);
+
+  if (normalizedKeyword === "gis") {
+    return matchesStandaloneToken(normalizedText, normalizedKeyword) && !isGisElectricalNoise(normalizedText);
+  }
+
+  return normalizedText.includes(normalizedKeyword);
+}
+
+export function matchKeywords(text: string, keywords: string[] = BLUEMAP_KEYWORDS): string[] {
+  return keywords.filter((keyword) => matchesKeyword(text, keyword));
 }
 
 export function scoreNoticeText(text: string, keywords: string[] = BLUEMAP_KEYWORDS): ScoreResult {
@@ -218,7 +243,7 @@ function matchScoringSignals(
   category: ScoringCategory
 ): MatchedScoringSignal[] {
   return signals
-    .filter((signal) => normalizedText.includes(normalizeSearchText(signal.keyword)))
+    .filter((signal) => matchesKeyword(normalizedText, signal.keyword))
     .map((signal) => ({
       ...signal,
       category

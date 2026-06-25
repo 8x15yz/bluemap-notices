@@ -1,3 +1,4 @@
+import { matchesKeyword } from "@/lib/scoring";
 import type { NormalizedNotice } from "@/lib/types";
 
 export const EXCLUDED_WINNER_METHOD = "수의시담";
@@ -137,5 +138,5 @@ function buildNoticeRuleText(notice: Pick<NormalizedNotice, "title" | "rawKeywor
 }
 
 function includesAnyKeyword(text: string, keywords: string[]): boolean {
-  return keywords.some((keyword) => text.includes(keyword.toLocaleLowerCase("ko-KR")));
+  return keywords.some((keyword) => matchesKeyword(text, keyword));
 }
