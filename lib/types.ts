@@ -32,6 +32,7 @@ export interface NoticeRecord extends NormalizedNotice {
   updatedAt: string;
   slackNotified: boolean;
   hasAnalysisReport?: boolean;
+  isActiveCandidate?: boolean;
 }
 
 export interface AnalysisReport {

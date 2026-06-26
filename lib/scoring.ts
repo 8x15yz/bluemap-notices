@@ -1,6 +1,10 @@
 import { BLUEMAP_KEYWORDS } from "@/lib/config/keywords";
 import type { NormalizedNotice } from "@/lib/types";
 
+// Bump when scoreNoticeText's signal/combo logic changes meaningfully, so stored
+// notice_scores rows can be traced back to the logic version that produced them.
+export const SCORING_VERSION = "tiered-domain-combo-v1";
+
 const MAX_DOMAIN_SCORE = 25;
 const MAX_STANDARDS_SCORE = 20;
 const MAX_TECHNICAL_SCORE = 20;
@@ -296,7 +300,19 @@ const COMBO_FAMILIES: ComboFamily[] = [
 // 부분 문자열로도 등장하고, 전력설비 분야의 "가스절연개폐장치(Gas Insulated Switchgear)"도
 // 동일하게 "GIS"로 줄여 쓴다. 단순 includes는 이 두 가지를 모두 공간정보 신호로 오인식하므로
 // 토큰 경계 검사와 전력설비 맥락 키워드 배제를 함께 적용한다.
-const GIS_ELECTRICAL_NOISE_KEYWORDS = ["gis설비", "가스절연", "개폐장치", "변전소", "154kv"];
+const GIS_ELECTRICAL_NOISE_KEYWORDS = [
+  "gis설비",
+  "가스절연",
+  "개폐장치",
+  "변전소",
+  "kv",
+  "KV",
+  "개폐소",
+  "변압기",
+  "차단기",
+  "송전",
+  "배전"
+];
 
 // 장비/모델 코드(SPS-1000, GPS-100, IVS-1000 등)는 "S-100"과 같은 표준 코드와
 // 표기상 매우 비슷해 단순 substring 매칭에서는 false positive를 일으킨다.

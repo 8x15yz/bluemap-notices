@@ -48,6 +48,21 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - 성공 응답은 `fetched`, `stored`, `candidates`, `notified`, `skippedNotifications` 값을 반환한다. 수동 모드에서는 `notified`가 항상 `0`이다.
 - 실패 시 API는 `500`과 오류 메시지를 반환하고, 서버 로그에는 `[api/sync] Sync failed`가 남는다. `CRON_SECRET`이나 Slack Webhook URL은 어떤 로그에도 출력하지 않는다.
 
+## `/api/admin/rescore-notices` 호출 규칙
+
+스코어링 로직(키워드, 콤보 보너스 등)을 바꾼 뒤 이미 저장된 공고를 다시 채점할 때 쓰는 유지보수용 엔드포인트다. SSH나 DB 직접 접속 없이, 배포된 앱이 갖고 있는 `DATABASE_URL`로 실행된다.
+
+- `POST /api/admin/rescore-notices`만 지원한다.
+- `Authorization: Bearer <ADMIN_SECRET 또는 CRON_SECRET>` 헤더가 필요하다. 둘 중 하나라도 설정돼 있고 값이 일치하면 인증을 통과한다. 둘 다 비어 있거나 일치하지 않으면 `401 Unauthorized`를 반환하고 아무것도 바꾸지 않는다.
+- `?dryRun=true`로 호출하면 DB에 아무것도 쓰지 않고 몇 건이 바뀔지(`updated`/`activated`/`deactivated`)만 미리 보여준다. 실제로 적용하려면 `dryRun` 파라미터 없이(또는 `dryRun=false`로) 호출한다.
+- 첫 호출 시 `notice_scores` 테이블에 `is_active_candidate`/`scoring_version`/`rescored_at`/`inactive_reason` 컬럼이 없으면 자동으로 추가한다(`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, 멱등). 마이그레이션을 별도로 실행할 필요가 없다.
+- Slack 알림을 절대 보내지 않고 `slack_notifications`에도 아무 기록을 남기지 않는다. 기존 공고를 하드 삭제하지도 않는다 — `score`/`matched_keywords`/`reason`만 다시 계산하고, 점수가 0이 되면 `is_active_candidate`를 `false`로 바꿔 메인 목록에서 숨긴다.
+- 응답: `{ dryRun, scoringVersion, totalNotices, updated, activated, deactivated }`.
+
+```powershell
+curl.exe -X POST -H "Authorization: Bearer <ADMIN_SECRET 또는 CRON_SECRET>" "https://배포도메인/api/admin/rescore-notices?dryRun=true"
+```
+
 ## 로컬 확인
 
 수동 모드(Slack 없음, 인증 불필요):

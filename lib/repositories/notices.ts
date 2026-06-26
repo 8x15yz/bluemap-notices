@@ -1,6 +1,7 @@
 import { getPool } from "@/lib/db";
 import { EXCLUDED_WINNER_METHOD, hasExcludedWinnerMethod, shouldExcludeNoticeCandidate } from "@/lib/notice-rules";
 import { getActiveFilterRuleConfig } from "@/lib/repositories/filter-rules";
+import { ensureNoticeScoreRescoreColumns } from "@/lib/repositories/migrations";
 import type { AnalysisReport, NormalizedNotice, NoticeRecord } from "@/lib/types";
 
 export type NoticeListParams = {
@@ -30,6 +31,7 @@ type NoticeRow = {
   reason: string | null;
   slack_notified: boolean;
   has_analysis_report?: boolean;
+  is_active_candidate: boolean;
 };
 
 type AnalysisReportRow = {
@@ -112,12 +114,13 @@ export async function upsertNotice(notice: NormalizedNotice): Promise<{ id: stri
 }
 
 export async function listNotices(params: NoticeListParams = {}): Promise<NoticeRecord[]> {
+  await ensureNoticeScoreRescoreColumns();
   const pool = getPool();
   const limit = params.limit ?? 100;
   const fetchLimit = limit * 5;
   const query = params.query?.trim();
   const values: Array<string | number> = [`%${EXCLUDED_WINNER_METHOD}%`];
-  const where = ["COALESCE(n.metadata->>'winnerMethod', '') NOT ILIKE $1"];
+  const where = ["COALESCE(n.metadata->>'winnerMethod', '') NOT ILIKE $1", "ns.is_active_candidate = true"];
 
   if (query) {
     values.push(`%${query}%`);
@@ -138,6 +141,7 @@ export async function listNotices(params: NoticeListParams = {}): Promise<Notice
         ns.score,
         ns.matched_keywords,
         ns.reason,
+        ns.is_active_candidate,
         EXISTS (
           SELECT 1 FROM slack_notifications sn
           WHERE sn.notice_id = n.id AND sn.status = 'sent'
@@ -162,11 +166,13 @@ export async function listNotices(params: NoticeListParams = {}): Promise<Notice
 
   return result.rows
     .map(mapNoticeRow)
+    .filter((notice) => notice.isActiveCandidate)
     .filter((notice) => !shouldExcludeNoticeCandidate(notice, filterConfig))
     .slice(0, limit);
 }
 
 export async function getNotice(id: string): Promise<NoticeRecord | null> {
+  await ensureNoticeScoreRescoreColumns();
   const pool = getPool();
   const result = await pool.query<NoticeRow>(
     `
@@ -175,6 +181,7 @@ export async function getNotice(id: string): Promise<NoticeRecord | null> {
         ns.score,
         ns.matched_keywords,
         ns.reason,
+        ns.is_active_candidate,
         EXISTS (
           SELECT 1 FROM slack_notifications sn
           WHERE sn.notice_id = n.id AND sn.status = 'sent'
@@ -194,6 +201,7 @@ export async function getNotice(id: string): Promise<NoticeRecord | null> {
 }
 
 export async function listPendingSlackNotices(): Promise<NoticeRecord[]> {
+  await ensureNoticeScoreRescoreColumns();
   const pool = getPool();
   const result = await pool.query<NoticeRow>(
     `
@@ -202,6 +210,7 @@ export async function listPendingSlackNotices(): Promise<NoticeRecord[]> {
         ns.score,
         ns.matched_keywords,
         ns.reason,
+        ns.is_active_candidate,
         false AS slack_notified
       FROM notices n
       JOIN notice_scores ns ON ns.notice_id = n.id
@@ -323,7 +332,8 @@ function mapNoticeRow(row: NoticeRow): NoticeRecord {
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     slackNotified: row.slack_notified,
-    hasAnalysisReport: row.has_analysis_report ?? false
+    hasAnalysisReport: row.has_analysis_report ?? false,
+    isActiveCandidate: row.is_active_candidate
   };
 }
 

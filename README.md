@@ -70,7 +70,8 @@ npm run db:init    # Postgres 스키마 적용
 | `G2B_BID_PUBLIC_API_BASE_URL` | 필수 | 나라장터 입찰공고정보서비스 기본 URL입니다. 기본값은 `http://apis.data.go.kr/1230000/ad/BidPublicInfoService`입니다. |
 | `APP_BASE_URL` | 필수 | 배포된 웹사이트 주소입니다. Slack 상세 보기 링크 생성에 사용합니다. 로컬은 `http://localhost:3000`, 배포는 `https://...` 형식으로 입력합니다. 마지막 `/`는 없어도 됩니다. |
 | `SLACK_WEBHOOK_URL` | 선택 | Slack Incoming Webhook URL입니다. 비워두면 공고 수집은 계속되고 Slack 알림만 건너뜁니다. |
-| `CRON_SECRET` | 배포 필수 | `/api/sync` 자동 수집 API 보호용 비밀값입니다. 로컬 개발 때는 비울 수 있지만, 배포 환경에서는 반드시 긴 랜덤 문자열로 설정합니다. |
+| `CRON_SECRET` | 배포 필수 | `/api/sync` 자동 수집 API 보호용 비밀값입니다. 로컬 개발 때는 비울 수 있지만, 배포 환경에서는 반드시 긴 랜덤 문자열로 설정합니다. `/api/admin/rescore-notices`도 이 값으로 인증할 수 있습니다. |
+| `ADMIN_SECRET` | 선택 | `/api/admin/rescore-notices` 재채점 API 전용 비밀값입니다. 비워두면 `CRON_SECRET`만으로 인증합니다. |
 | `AI_PROVIDER` | 필수 | `mock`, `openai`, `anthropic` 중 하나입니다. MVP 운영은 `mock` 또는 `openai`를 사용합니다. Anthropic 검증은 MVP에서 스킵했습니다. |
 | `OPENAI_API_KEY` | 조건부 | `AI_PROVIDER=openai`일 때 입력합니다. 비워두면 OpenAI 호출을 하지 않습니다. |
 | `OPENAI_MODEL` | 선택 | OpenAI 모델명입니다. 비워두면 코드 기본값 `gpt-4.1-mini`를 사용합니다. |

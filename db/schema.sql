@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS notice_scores (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Added for the admin rescore endpoint; idempotent so it can be re-run safely
+-- (including being applied automatically by the app itself via ensureNoticeScoreRescoreColumns()).
+ALTER TABLE notice_scores ADD COLUMN IF NOT EXISTS is_active_candidate BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE notice_scores ADD COLUMN IF NOT EXISTS scoring_version TEXT;
+ALTER TABLE notice_scores ADD COLUMN IF NOT EXISTS rescored_at TIMESTAMPTZ;
+ALTER TABLE notice_scores ADD COLUMN IF NOT EXISTS inactive_reason TEXT;
+
 CREATE TABLE IF NOT EXISTS slack_notifications (
   id BIGSERIAL PRIMARY KEY,
   notice_id TEXT NOT NULL REFERENCES notices(id) ON DELETE CASCADE,
