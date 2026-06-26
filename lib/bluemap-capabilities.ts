@@ -401,3 +401,111 @@ export const BLUEMAP_CAPABILITIES: BluemapCapability[] = [
     ]
   }
 ];
+
+export function matchBluemapCapabilities(text: string, limit = BLUEMAP_CAPABILITIES.length): MatchedBluemapCapability[] {
+  const normalizedText = normalizeSearchText(text);
+
+  return BLUEMAP_CAPABILITIES.map((capability, index) => {
+    const matchedKeywords = capability.keywords.filter((keyword) => matchesKeyword(normalizedText, keyword));
+    const relevanceScore = matchedKeywords.reduce((score, keyword) => score + getKeywordWeight(keyword), 0);
+
+    return {
+      ...capability,
+      matchedKeywords,
+      relevanceScore,
+      order: index
+    };
+  })
+    .filter((capability) => capability.matchedKeywords.length > 0)
+    .sort((a, b) => b.relevanceScore - a.relevanceScore || a.order - b.order)
+    .slice(0, limit)
+    .map(({ order: _order, ...capability }) => capability);
+}
+
+export function buildNoticeCapabilitySearchText(notice: NoticeCapabilityInput, documentMarkdown = ""): string {
+  return [
+    notice.title,
+    notice.organization,
+    notice.summary,
+    notice.rawKeywordsText,
+    notice.scoreReason,
+    notice.matchedKeywords.join(" "),
+    stringifyMetadata(notice.metadata),
+    documentMarkdown
+  ]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join("\n");
+}
+
+export function buildBluemapCapabilityPromptContext(notice: NoticeCapabilityInput, documentMarkdown: string, limit = 5): string {
+  const matches = matchBluemapCapabilities(buildNoticeCapabilitySearchText(notice, documentMarkdown), limit);
+
+  if (matches.length === 0) {
+    return "- 공고/첨부문서에서 직접 매칭된 블루맵 기술특장점이 없습니다. 블루맵 적합성은 문서에서 확인되는 근거 안에서 보수적으로 작성합니다.";
+  }
+
+  return matches
+    .map((capability, index) =>
+      [
+        `### ${index + 1}. ${capability.title}`,
+        `- 매칭 신호: ${capability.matchedKeywords.slice(0, 8).join(", ")}`,
+        `- 블루맵 근거: ${capability.strengths.join(" / ")}`,
+        `- 제안 전략 포인트: ${capability.proposalAngles.join(" / ")}`,
+        `- 레퍼런스 단서: ${capability.evidence.join(" / ")}`
+      ].join("\n")
+    )
+    .join("\n\n");
+}
+
+export function buildBluemapRecommendationReason(notice: NoticeCapabilityInput): string {
+  const baseReason = notice.scoreReason.trim() || "공고 내용과 블루맵 역량의 연결성을 확인해야 합니다.";
+  const matches = matchBluemapCapabilities(buildNoticeCapabilitySearchText(notice), 3);
+
+  if (matches.length === 0) {
+    return `${baseReason} 블루맵 기술특장점 기준으로는 직접 연결되는 신호가 제한적입니다. 첨부문서에서 해양공간정보, S-100, VTS, 항로표지, 해양데이터, 표준/API 연계 같은 구체 요구가 있는지 확인해야 합니다.`;
+  }
+
+  const titles = matches.map((capability) => capability.title).join(", ");
+  const primaryStrength = matches[0].strengths[0];
+
+  return `${baseReason} 블루맵 기술특장점 기준으로는 ${titles} 역량이 연결됩니다. 특히 ${primaryStrength}를 근거로 검토할 수 있습니다.`;
+}
+
+export function buildBluemapScoreReason(text: string, matchedKeywords: string[]): string {
+  if (matchedKeywords.length === 0) {
+    return "블루맵 핵심 키워드와 직접 매칭되지 않았습니다.";
+  }
+
+  const keywordReason = `${matchedKeywords.slice(0, 6).join(", ")} 키워드가 공고 내용과 맞습니다.`;
+  const matches = matchBluemapCapabilities(text, 2);
+
+  if (matches.length === 0) {
+    return `${keywordReason} 다만 블루맵 기술특장점 기준의 직접 매칭은 제한적이어서 첨부문서에서 해양공간정보, 표준 데이터, API 연계 등 구체 범위를 확인해야 합니다.`;
+  }
+
+  return `${keywordReason} 블루맵 기술특장점 기준으로는 ${matches.map((capability) => capability.title).join(", ")} 역량과 연결됩니다.`;
+}
+
+function normalizeSearchText(value: string): string {
+  return value.toLocaleLowerCase("ko-KR").replace(/\s+/g, " ").trim();
+}
+
+function getKeywordWeight(keyword: string): number {
+  if (/^s-\d+/i.test(keyword) || keyword.length >= 6) {
+    return 6;
+  }
+
+  if (/^[a-z0-9/-]+$/i.test(keyword)) {
+    return 4;
+  }
+
+  return 3;
+}
+
+function stringifyMetadata(metadata: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(metadata);
+  } catch {
+    return "";
+  }
+}
