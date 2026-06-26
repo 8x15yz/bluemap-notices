@@ -114,31 +114,21 @@ export async function getActiveFilterRuleConfig(): Promise<ActiveFilterRuleConfi
   };
 }
 
-export async function getFilterImpactSummary(limit = 5): Promise<FilterImpactSummary> {
-  const pool = getPool();
-  const [config, result] = await Promise.all([
-    getActiveFilterRuleConfig(),
-    pool.query<FilterImpactNoticeRow>(
-      `
-        SELECT
-          n.id,
-          n.title,
-          n.organization,
-          n.raw_keywords_text,
-          n.metadata,
-          n.updated_at,
-          ns.score,
-          ns.matched_keywords,
-          ns.is_active_candidate,
-          ns.inactive_reason
-        FROM notices n
-        JOIN notice_scores ns ON ns.notice_id = n.id
-        ORDER BY n.updated_at DESC
-        LIMIT 1000
-      `
-    )
-  ]);
-  const candidates = result.rows.map((row) => ({
+const FILTER_IMPACT_NOTICE_COLUMNS = `
+  n.id,
+  n.title,
+  n.organization,
+  n.raw_keywords_text,
+  n.metadata,
+  n.updated_at,
+  ns.score,
+  ns.matched_keywords,
+  ns.is_active_candidate,
+  ns.inactive_reason
+`;
+
+function mapFilterImpactNoticeRow(row: FilterImpactNoticeRow) {
+  return {
     id: row.id,
     title: row.title,
     organization: row.organization ?? undefined,
@@ -149,21 +139,59 @@ export async function getFilterImpactSummary(limit = 5): Promise<FilterImpactSum
     updatedAt: row.updated_at.toISOString(),
     isActiveCandidate: row.is_active_candidate,
     inactiveReason: row.inactive_reason ?? undefined
+  };
+}
+
+export async function getFilterImpactSummary(limit = 5): Promise<FilterImpactSummary> {
+  const pool = getPool();
+  const [config, sampleResult, inactiveResult] = await Promise.all([
+    getActiveFilterRuleConfig(),
+    pool.query<FilterImpactNoticeRow>(
+      `
+        SELECT ${FILTER_IMPACT_NOTICE_COLUMNS}
+        FROM notices n
+        JOIN notice_scores ns ON ns.notice_id = n.id
+        ORDER BY n.updated_at DESC
+        LIMIT 1000
+      `
+    ),
+    // 재채점으로 비활성화된 공고는 notices.updated_at이 갱신되지 않으므로, 위 "최근 동기화 1000건" 샘플과
+    // 무관하게 rescored_at 기준으로 직접 조회해야 최근 비활성화된 공고를 놓치지 않는다.
+    pool.query<FilterImpactNoticeRow>(
+      `
+        SELECT ${FILTER_IMPACT_NOTICE_COLUMNS}
+        FROM notices n
+        JOIN notice_scores ns ON ns.notice_id = n.id
+        WHERE ns.is_active_candidate = false
+        ORDER BY ns.rescored_at DESC NULLS LAST, ns.updated_at DESC
+        LIMIT $1
+      `,
+      [limit * 4]
+    )
+  ]);
+
+  const sampleCandidates = sampleResult.rows.map(mapFilterImpactNoticeRow);
+  const ruleExcluded = sampleCandidates
+    .map((notice) => ({ notice, reason: getNoticeExclusionReason(notice, config) }))
+    .filter((entry): entry is { notice: (typeof sampleCandidates)[number]; reason: string } => entry.reason !== undefined);
+
+  const inactiveExcluded = inactiveResult.rows.map(mapFilterImpactNoticeRow).map((notice) => ({
+    notice,
+    reason: getNoticeExclusionReason(notice, config) ?? notice.inactiveReason ?? "비활성 후보로 처리되었습니다."
   }));
-  const excluded = candidates
-    .map((notice) => ({
-      notice,
-      reason:
-        getNoticeExclusionReason(notice, config) ??
-        (notice.isActiveCandidate ? undefined : notice.inactiveReason ?? "비활성 후보로 처리되었습니다.")
-    }))
-    .filter((entry): entry is { notice: (typeof candidates)[number]; reason: string } => entry.reason !== undefined);
+
+  const recentExcluded = new Map<string, { notice: (typeof sampleCandidates)[number]; reason: string }>();
+  for (const entry of [...inactiveExcluded, ...ruleExcluded]) {
+    if (!recentExcluded.has(entry.notice.id)) {
+      recentExcluded.set(entry.notice.id, entry);
+    }
+  }
 
   return {
-    beforeCount: candidates.length,
-    afterCount: candidates.length - excluded.length,
-    excludedCount: excluded.length,
-    recentExcluded: excluded.slice(0, limit).map(({ notice, reason }) => ({
+    beforeCount: sampleCandidates.length,
+    afterCount: sampleCandidates.length - ruleExcluded.length,
+    excludedCount: ruleExcluded.length,
+    recentExcluded: [...recentExcluded.values()].slice(0, limit).map(({ notice, reason }) => ({
       id: notice.id,
       title: notice.title,
       organization: notice.organization,
