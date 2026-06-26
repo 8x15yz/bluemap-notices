@@ -50,9 +50,15 @@ export async function rescoreAllNotices(params: { dryRun: boolean }): Promise<Re
     result.rows.map(async (row) => {
       const rescored = scoreNoticeText(row.raw_keywords_text, includeKeywords);
       const isActiveCandidate = rescored.score > 0;
+      const droppedKeywords = (row.matched_keywords ?? []).filter(
+        (keyword) => !rescored.matchedKeywords.includes(keyword)
+      );
       const inactiveReason = isActiveCandidate
         ? null
-        : rescored.breakdown.exclusionReason ?? "키워드 매칭 신호가 없어 재채점으로 비활성 처리되었습니다.";
+        : rescored.breakdown.exclusionReason ??
+          (droppedKeywords.length > 0
+            ? `이전에 "${droppedKeywords.join(", ")}" 키워드로 매칭되었지만, 최신 키워드 매칭 기준으로는 더 이상 후보로 인정되지 않습니다.`
+            : "키워드 매칭 신호가 없어 재채점으로 비활성 처리되었습니다.");
 
       const scoreChanged = row.score !== rescored.score;
       const keywordsChanged = !sameKeywords(row.matched_keywords ?? [], rescored.matchedKeywords);

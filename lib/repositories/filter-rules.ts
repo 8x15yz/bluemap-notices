@@ -1,5 +1,5 @@
 import { getPool } from "@/lib/db";
-import { shouldExcludeNoticeCandidate, type NoticeRuleConfig } from "@/lib/notice-rules";
+import { getNoticeExclusionReason, type NoticeRuleConfig } from "@/lib/notice-rules";
 import { scoreNoticeText } from "@/lib/scoring";
 
 export const FILTER_RULE_TYPES = ["include_keyword", "it_signal", "non_it_exclude"] as const;
@@ -28,6 +28,7 @@ export interface FilterImpactNotice {
   score: number;
   matchedKeywords: string[];
   updatedAt: string;
+  reason?: string;
 }
 
 export interface FilterImpactSummary {
@@ -60,6 +61,8 @@ type FilterImpactNoticeRow = {
   updated_at: Date;
   score: number;
   matched_keywords: string[] | null;
+  is_active_candidate: boolean;
+  inactive_reason: string | null;
 };
 
 export function isFilterRuleType(value: unknown): value is FilterRuleType {
@@ -125,7 +128,9 @@ export async function getFilterImpactSummary(limit = 5): Promise<FilterImpactSum
           n.metadata,
           n.updated_at,
           ns.score,
-          ns.matched_keywords
+          ns.matched_keywords,
+          ns.is_active_candidate,
+          ns.inactive_reason
         FROM notices n
         JOIN notice_scores ns ON ns.notice_id = n.id
         ORDER BY n.updated_at DESC
@@ -141,21 +146,31 @@ export async function getFilterImpactSummary(limit = 5): Promise<FilterImpactSum
     matchedKeywords: row.matched_keywords ?? [],
     metadata: row.metadata,
     score: row.score,
-    updatedAt: row.updated_at.toISOString()
+    updatedAt: row.updated_at.toISOString(),
+    isActiveCandidate: row.is_active_candidate,
+    inactiveReason: row.inactive_reason ?? undefined
   }));
-  const excluded = candidates.filter((notice) => shouldExcludeNoticeCandidate(notice, config));
+  const excluded = candidates
+    .map((notice) => ({
+      notice,
+      reason:
+        getNoticeExclusionReason(notice, config) ??
+        (notice.isActiveCandidate ? undefined : notice.inactiveReason ?? "비활성 후보로 처리되었습니다.")
+    }))
+    .filter((entry): entry is { notice: (typeof candidates)[number]; reason: string } => entry.reason !== undefined);
 
   return {
     beforeCount: candidates.length,
     afterCount: candidates.length - excluded.length,
     excludedCount: excluded.length,
-    recentExcluded: excluded.slice(0, limit).map((notice) => ({
+    recentExcluded: excluded.slice(0, limit).map(({ notice, reason }) => ({
       id: notice.id,
       title: notice.title,
       organization: notice.organization,
       score: notice.score,
       matchedKeywords: notice.matchedKeywords,
-      updatedAt: notice.updatedAt
+      updatedAt: notice.updatedAt,
+      reason
     }))
   };
 }

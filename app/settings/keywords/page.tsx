@@ -163,6 +163,7 @@ function FilterImpactPanel({ impact }: { impact: FilterImpactSummary }) {
                 <span>{notice.score}점</span>
                 <strong>{notice.title}</strong>
                 <small>{notice.organization ?? "기관 미확인"}</small>
+                {notice.reason ? <small className="recent-excluded-reason">{notice.reason}</small> : null}
               </a>
             ))}
           </div>

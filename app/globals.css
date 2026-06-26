@@ -1325,7 +1325,7 @@ textarea {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
   gap: 4px 8px;
-  align-items: center;
+  align-items: start;
   min-height: 44px;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -1354,6 +1354,12 @@ textarea {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.recent-excluded-reason {
+  white-space: normal;
+  font-weight: 500;
+  font-style: italic;
 }
 
 .rule-sections {

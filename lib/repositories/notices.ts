@@ -120,7 +120,11 @@ export async function listNotices(params: NoticeListParams = {}): Promise<Notice
   const fetchLimit = limit * 5;
   const query = params.query?.trim();
   const values: Array<string | number> = [`%${EXCLUDED_WINNER_METHOD}%`];
-  const where = ["COALESCE(n.metadata->>'winnerMethod', '') NOT ILIKE $1", "ns.is_active_candidate = true"];
+  const where = [
+    "COALESCE(n.metadata->>'winnerMethod', '') NOT ILIKE $1",
+    "ns.is_active_candidate = true",
+    "(n.deadline_at IS NULL OR n.deadline_at >= now())"
+  ];
 
   if (query) {
     values.push(`%${query}%`);

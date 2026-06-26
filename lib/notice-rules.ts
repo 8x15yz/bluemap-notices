@@ -104,15 +104,26 @@ export function hasNonItExclusionSignal(
   return includesAnyKeyword(buildNoticeRuleText(notice), config.nonItExclusionKeywords);
 }
 
+export function getNoticeExclusionReason(
+  notice: Pick<NormalizedNotice, "title" | "rawKeywordsText" | "matchedKeywords" | "metadata">,
+  config: NoticeRuleConfig = DEFAULT_NOTICE_RULE_CONFIG
+): string | undefined {
+  if (hasExcludedWinnerMethod(notice.metadata)) {
+    return "수의시담 등 제외 대상 계약 방식입니다.";
+  }
+
+  if (hasNonItExclusionSignal(notice, config) && !hasRelevantItSignal(notice, config)) {
+    return "제외 키워드와 일치하고 IT 관련 키워드가 없습니다.";
+  }
+
+  return undefined;
+}
+
 export function shouldExcludeNoticeCandidate(
   notice: Pick<NormalizedNotice, "title" | "rawKeywordsText" | "matchedKeywords" | "metadata">,
   config: NoticeRuleConfig = DEFAULT_NOTICE_RULE_CONFIG
 ): boolean {
-  if (hasExcludedWinnerMethod(notice.metadata)) {
-    return true;
-  }
-
-  return hasNonItExclusionSignal(notice, config) && !hasRelevantItSignal(notice, config);
+  return getNoticeExclusionReason(notice, config) !== undefined;
 }
 
 function buildNoticeRuleText(notice: Pick<NormalizedNotice, "title" | "rawKeywordsText" | "matchedKeywords" | "metadata">): string {
